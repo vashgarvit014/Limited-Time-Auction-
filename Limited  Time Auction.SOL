@@ -1,0 +1,59 @@
+pragma solidity ^0.8.19;
+
+contract LimitedTimeAuction {
+    address public owner;
+    address public highestBidder;
+    uint public highestBid;
+    uint public auctionEndTime;
+
+    mapping(address => uint) public pendingReturns;
+
+    event NewBid(address indexed bidder, uint amount);
+    event AuctionEnded(address winner, uint amount);
+
+    modifier onlyBeforeEnd() {
+        require(block.timestamp < auctionEndTime, "Auction has ended");
+        _;
+    }
+
+    modifier onlyAfterEnd() {
+        require(block.timestamp >= auctionEndTime, "Auction is still active");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+        auctionEndTime = block.timestamp + 1 hours; // Auction lasts 1 hour
+    }
+
+    function bid() public payable onlyBeforeEnd {
+        require(msg.value > highestBid, "Bid must be higher than the current highest bid");
+
+        // Refund the previous highest bidder
+        if (highestBid > 0) {
+            pendingReturns[highestBidder] += highestBid;
+        }
+
+        highestBidder = msg.sender;
+        highestBid = msg.value;
+
+        emit NewBid(msg.sender, msg.value);
+    }
+
+    function withdraw() public {
+        uint amount = pendingReturns[msg.sender];
+        require(amount > 0, "No funds to withdraw");
+
+        pendingReturns[msg.sender] = 0;
+        payable(msg.sender).transfer(amount);
+    }
+
+    function finalizeAuction() public onlyAfterEnd {
+        emit AuctionEnded(highestBidder, highestBid);
+    }
+
+    function ownerWithdraw() public onlyAfterEnd {
+        require(msg.sender == owner, "Only owner can withdraw funds");
+        payable(owner).transfer(highestBid);
+    }
+}
